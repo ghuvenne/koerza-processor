@@ -1,0 +1,9 @@
+app = "koerza-processor"
+primary_region = "ams"
+
+[build]
+
+[[vm]]
+  cpus = 1
+  cpu_kind = "shared"
+  memory = "512mb"
