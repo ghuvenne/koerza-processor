@@ -21,7 +21,7 @@ async function loadRouteForRace(raceId: string): Promise<RaceRouteCache | null> 
   try {
     // Column name may vary: gpx_data, route_gpx, gpx, etc.
     const result = await pool.query(
-      `SELECT gpx_data, route_length_meters FROM races WHERE id = $1 LIMIT 1`,
+      `SELECT gpx_data, on_route_distance_meters FROM races WHERE id = $1 LIMIT 1`,
       [raceId],
     );
 
@@ -39,7 +39,7 @@ async function loadRouteForRace(raceId: string): Promise<RaceRouteCache | null> 
 
     // Store route length in hot state so gaps can use it
     const raceState = getOrCreateRaceState(raceId);
-    raceState.routeLength = row.route_length_meters ?? route.totalDistance;
+    raceState.routeLength = row.on_route_distance_meters ?? route.totalDistance;
 
     const spatialIndex = buildSpatialIndex(route, 500);
     const cache: RaceRouteCache = { route, spatialIndex };
