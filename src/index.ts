@@ -5,6 +5,7 @@ import { writePositionsSnapshot } from "./snapshots/positions.js";
 import { writeStatesSnapshot } from "./snapshots/states.js";
 import { writeAlertsSnapshot } from "./snapshots/alerts.js";
 import { writeGapsSnapshot } from "./snapshots/gaps.js";
+import { startTrackerLookup, getRaceIdForTracker } from "./trackerLookup.js";
 import type { PositionEvent } from "./types.js";
 
 // Throttle: write snapshots at most every 3s per race
@@ -22,8 +23,8 @@ function shouldWrite(map: Map<string, number>, raceId: string, intervalMs: numbe
 }
 
 async function handlePositionEvent(event: PositionEvent): Promise<void> {
-  const raceId = event.raceId;
-  if (!raceId || raceId === "unknown") return;
+  const raceId = event.raceId ?? getRaceIdForTracker(event.trackerId);
+  if (!raceId) return;
 
   // Get current distance for this tracker (for forward-only projection)
   const currentRace = getRaceState(raceId);
@@ -69,6 +70,7 @@ async function handlePositionEvent(event: PositionEvent): Promise<void> {
 
 async function main() {
   console.log("[Processor] Starting koerza-processor...");
+  await startTrackerLookup();
   await startConsumer(handlePositionEvent);
 }
 
