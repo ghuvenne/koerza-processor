@@ -31,7 +31,8 @@ async function loadRouteForRace(raceId: string): Promise<RaceRouteCache | null> 
     }
 
     const row = result.rows[0];
-    const route = processRoute(row.gpx_data);
+    const gpxStr = typeof row.gpx_data === "string" ? row.gpx_data : JSON.stringify(row.gpx_data);
+    const route = processRoute(gpxStr);
     if (!route) {
       console.warn(`[RouteProjection] Could not parse GPX for race=${raceId}`);
       return null;
