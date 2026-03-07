@@ -1,6 +1,6 @@
-import { haversineDistance, projectPointOnSegment, projectPositionOnRoute, processRoute, parseGpxToCoordinates, type RoutePoint, type ProcessedRoute, type ProjectionResult } from "@shared/gpxUtils";
+import { haversineDistance, projectPointOnSegment, projectPositionOnRoute, processRoute, parseGpxToCoordinates, type RoutePoint, type ProcessedRoute, type ProjectionResult } from "../shared/gpxUtils.js";
 
-export { haversineDistance, parseGpxToCoordinates, processRoute, projectPointOnSegment, projectPositionOnRoute, type RoutePoint, type ProcessedRoute, type ProjectionResult } from "@shared/gpxUtils";
+export { haversineDistance, parseGpxToCoordinates, processRoute, projectPointOnSegment, projectPositionOnRoute, type RoutePoint, type ProcessedRoute, type ProjectionResult } from "../shared/gpxUtils.js";
 
 export interface SpatialSegmentIndex {
   cellSize: number;
