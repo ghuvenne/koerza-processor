@@ -1,18 +1,28 @@
-import { connect, JSONCodec, type NatsConnection } from "nats";
+import { connect, JSONCodec } from "nats";
 import type { PositionEvent } from "./types.js";
 
-export const jc = JSONCodec<PositionEvent>();
+const jc = JSONCodec<PositionEvent>();
 
-let ncPromise: Promise<NatsConnection> | null = null;
+export async function startConsumer(
+  handler: (event: PositionEvent) => Promise<void>,
+): Promise<void> {
+  const nc = await connect({
+    servers: process.env.NATS_URL!,
+    token: process.env.NATS_TOKEN!,
+    name: "koerza-processor",
+  });
 
-export async function getNats(): Promise<NatsConnection> {
-  if (!ncPromise) {
-    ncPromise = connect({
-      servers: process.env.NATS_URL!,
-      token: process.env.NATS_TOKEN!,
-      name: "koerza-processor",
-    });
+  console.log("[NATS] Connected to", process.env.NATS_URL);
+
+  const sub = nc.subscribe("pos.>");
+  console.log("[NATS] Subscribed to pos.>");
+
+  for await (const msg of sub) {
+    try {
+      const event = jc.decode(msg.data);
+      await handler(event);
+    } catch (err) {
+      console.error("[NATS] Processing error:", err);
+    }
   }
-
-  return ncPromise;
 }

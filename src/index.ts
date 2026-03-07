@@ -1,41 +1,78 @@
-import { getNats, jc } from "./nats.js";
-import { redis } from "./redis.js";
-import { PositionEventSchema } from "./types.js";
+import { startConsumer } from "./nats.js";
+import { updateTrackerState, getRaceState } from "./state.js";
+import { projectPosition } from "./routeProjection.js";
+import { writePositionsSnapshot } from "./snapshots/positions.js";
+import { writeStatesSnapshot } from "./snapshots/states.js";
+import { writeAlertsSnapshot } from "./snapshots/alerts.js";
+import { writeGapsSnapshot } from "./snapshots/gaps.js";
+import type { PositionEvent } from "./types.js";
 
-async function main() {
-  const nc = await getNats();
-  const sub = nc.subscribe("pos.>");
+// Throttle: write snapshots at most every 3s per race
+const SNAPSHOT_INTERVAL_MS = 3000;
+const ALERTS_INTERVAL_MS = 30_000;
+const lastSnapshotTime = new Map<string, number>();
+const lastAlertsTime = new Map<string, number>();
 
-  console.log("Processor listening on pos.>");
+function shouldWrite(map: Map<string, number>, raceId: string, intervalMs: number): boolean {
+  const now = Date.now();
+  const last = map.get(raceId) ?? 0;
+  if (now - last < intervalMs) return false;
+  map.set(raceId, now);
+  return true;
+}
 
-  for await (const msg of sub) {
-    try {
-      const event = PositionEventSchema.parse(jc.decode(msg.data));
+async function handlePositionEvent(event: PositionEvent): Promise<void> {
+  const raceId = event.raceId;
+  if (!raceId || raceId === "unknown") return;
 
-      const key = `t:${event.trackerId}`;
-      const pipeline = redis.pipeline();
+  // Get current distance for this tracker (for forward-only projection)
+  const currentRace = getRaceState(raceId);
+  const previousDistance = currentRace?.trackers.get(event.trackerId)?.lastDistanceMeters ?? 0;
 
-      pipeline.hset(key, {
-        trackerId: event.trackerId,
-        raceId: event.raceId ?? "",
-        ts: event.ts,
-        lat: event.lat,
-        lon: event.lon,
-        speed: event.speed ?? "",
-        heading: event.heading ?? ""
-      });
+  // Gather peloton distances for intersection disambiguation
+  const pelotonDistances = currentRace
+    ? Array.from(currentRace.trackers.values()).map(t => t.lastDistanceMeters)
+    : undefined;
 
-      pipeline.expire(key, 600);
-      await pipeline.exec();
+  // Project GPS position onto route
+  const distanceMeters = await projectPosition(
+    raceId,
+    event.lat,
+    event.lon,
+    previousDistance,
+    pelotonDistances,
+  );
 
-      console.log("Updated hot state", event.trackerId);
-    } catch (err) {
-      console.error("Processor error", err);
+  if (distanceMeters === null) {
+    // Route not loaded yet or not found; skip snapshot
+    return;
+  }
+
+  // Update in-memory hot state
+  updateTrackerState(raceId, event.trackerId, distanceMeters, event.ts, event.speed);
+
+  // Throttled snapshot writes
+  if (shouldWrite(lastSnapshotTime, raceId, SNAPSHOT_INTERVAL_MS)) {
+    const writes: Promise<void>[] = [
+      writePositionsSnapshot(raceId),
+      writeStatesSnapshot(raceId),
+      writeGapsSnapshot(raceId),
+    ];
+
+    if (shouldWrite(lastAlertsTime, raceId, ALERTS_INTERVAL_MS)) {
+      writes.push(writeAlertsSnapshot(raceId));
     }
+
+    await Promise.allSettled(writes);
   }
 }
 
+async function main() {
+  console.log("[Processor] Starting koerza-processor...");
+  await startConsumer(handlePositionEvent);
+}
+
 main().catch((err) => {
-  console.error("Fatal error", err);
+  console.error("[Processor] Fatal error:", err);
   process.exit(1);
 });
